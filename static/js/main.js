@@ -43,20 +43,6 @@ function onScroll(){
 $(document).ready(function () {
     svg4everybody({});
 
-    $("#form").submit(function() {
-        console.log(this);
-		$.ajax({
-			type: "POST",
-			url: "static/js/mail.php",
-			data: $(this).serialize()
-		}).done(function() {
-			$(this).find("input").val("");
-			alert("Спасибо за заявку! Скоро мы с вами свяжемся.");
-			$("#form").trigger("reset");
-		});
-		return false;
-	});
-
     $('.owl-carousel').owlCarousel({
         items: 1,
         loop: true,
