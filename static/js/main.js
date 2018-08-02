@@ -125,12 +125,12 @@ $(document).ready(function () {
 
     var open_modal = false;
 
-    $('.parallax-window-1').parallax({imageSrc: 'static/img/general/bg-header.jpg'});
+    // $('.parallax-window-1').parallax({imageSrc: 'static/img/general/bg.jpg'});
     $('.parallax-window-2').parallax({imageSrc: 'static/img/content/whatdo5.jpg'});
     $('.parallax-window-3').parallax({imageSrc: 'static/img/content/portfolio.jpg'});
     $('.parallax-window-4').parallax({imageSrc: 'static/img/content/skills.jpg'});
     $('.parallax-window-5').parallax({imageSrc: 'static/img/content/statistic.jpg'});
-    $('.parallax-window-6').parallax({imageSrc: 'static/img/content/bg-contact.jpg'});
+    // $('.parallax-window-6').parallax({imageSrc: 'static/img/content/bg-contact.jpg'});
 
 
     link.click(function() {
