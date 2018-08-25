@@ -1,0 +1,478 @@
+(function () {
+    var WebsocketHelper = function () {
+        var component
+            ,menu
+            ;
+
+        this.registerMenu = function (m) {
+            menu = m;
+        };
+
+        this.register = function (c) {
+            component = c;
+        };
+
+        this.unregister = function () {
+            component = undefined;
+        };
+
+        if (undefined !== window.accountUserWebSocketConnection) {
+            window.accountUserWebSocketConnection.subscribeChannel('notifications_' + window.accountUserId, function (message, json) {
+                var groups = json.groups;
+				if ('string' === (typeof groups)) {
+					try {
+						groups = JSON.parse(groups);
+					} catch (e) {
+						console.log(e, groups);
+					}
+				}
+                if (component) {
+                    component.updateData(groups);
+                }
+                else if (menu) {
+                    menu.handleUpdateCounter('notifications_button_small', groups.count.new);
+                }
+            });
+        }
+    };
+    var wsHelper = new WebsocketHelper;
+    //var modal = window.gcModalFactory.create({show:false});
+
+    var AccountUserMenuItem = React.createClass({displayName: "AccountUserMenuItem",
+        handleClick: function (e) {
+            //this.props.onItemClick( )
+            e.preventDefault();
+            this.props.onSelectItem(this.props.item)
+        },
+
+        render: function () {
+
+            var itemClassName = "menu-item-" + this.props.item.id;
+            if (this.props.isActive) {
+                itemClassName += " active";
+            }
+            var iconUrl = this.props.isActive ? this.props.item.activeIconUrl : this.props.item.iconUrl;
+            var subIconHtml = this.props.item.subIconHtml ? this.props.item.subIconHtml : null;
+
+            var notifyCountClass = 'notify-count ' + (this.props.notifyCount > 0 ? '' : 'hide');
+            return (
+                React.createElement("li", {className: itemClassName}, 
+                    React.createElement("a", {onClick: this.handleClick, title: this.props.item.label, href: "javascript:void(0)"}, 
+                        React.createElement("img", {src: iconUrl}), 
+                        React.createElement("span", {className: "sub-icon", dangerouslySetInnerHTML: {__html: (subIconHtml)}}), 
+                        React.createElement("span", {className: notifyCountClass}, this.props.notifyCount)
+                    )
+                )
+            );
+        }
+    });
+
+    var NotificationGroup = React.createClass({displayName: "NotificationGroup",
+        render: function () {
+            var group = this.props.group;
+            var helper = group.helper ? group.helper : {};
+            var className = 'notification-group notification-click-area notification-status-' + group.status;
+            return (
+                React.createElement("a", {className: className, href: helper.click_url}, 
+                    React.createElement("span", {className: "user-image", dangerouslySetInnerHTML: {__html: (helper.first_user_thumbnail)}}), 
+                    React.createElement("div", {className: "content", dangerouslySetInnerHTML: {__html: (helper.content)}}), 
+                    React.createElement("div", {className: "date"}, helper.display_date), 
+                    React.createElement("div", {className: "clear"}), 
+                    React.createElement(NotificationGroupMarkViewedButton, {group: group, onSuccess: this.props.onMarkViewSuccess})
+                )
+            );
+        }
+    });
+
+    var NotificationGroupMarkViewAllButton = React.createClass({displayName: "NotificationGroupMarkViewAllButton",
+        getInitialState: function () {
+            return {
+                inProgress: false
+            };
+        },
+        handleClick: function (e) {
+            e.stopPropagation();
+            if (this.state.inProgress) {
+                return false;
+            }
+            var that = this;
+            that.setState({
+                inProgress: true
+            });
+            ajaxCall('/notifications/notifications/viewedAll', {}, {suppressErrors: true}, function (response) {
+                that.setState({
+                    inProgress: false
+                });
+                that.props.onSuccess(response.groups);
+            });
+            return false;
+        },
+        render: function () {
+            return (
+                React.createElement("div", {onClick: this.handleClick, className: "mark-viewed-all"}, "Отметить прочитанными")
+            );
+        }
+    });
+    var NotificationGroupMarkViewedButton = React.createClass({displayName: "NotificationGroupMarkViewedButton",
+        getInitialState: function () {
+            return {
+                inProgress: false
+            };
+        },
+        handleClick: function (e) {
+            e.stopPropagation();
+            if (this.state.inProgress) {
+                return false;
+            }
+            var that = this;
+            that.setState({
+                inProgress: true
+            });
+            ajaxCall('/notifications/notifications/viewed', {
+                id: this.props.group.id
+            }, {suppressErrors: true}, function (response) {
+                that.setState({
+                    inProgress: false
+                });
+                that.props.onSuccess(response.groups);
+            });
+            return false;
+        },
+        render: function () {
+            var className = this.state.inProgress ? 'fa fa-spinner fa-spin' : 'fa fa-times';
+
+            return (
+                React.createElement("div", {onClick: this.handleClick, className: "mark-viewed"}, 
+                    React.createElement("i", {className: className})
+                )
+            );
+        }
+    });
+
+    var NotificationAccountUserSubmenu = React.createClass({displayName: "NotificationAccountUserSubmenu",
+        getInitialState: function () {
+            return {
+                data: {
+                    count: {
+                        all: 0,
+                        new: 0
+                    },
+                    groups: []
+                },
+                loaded: false
+            };
+        },
+        componentDidMount: function () {
+            var that = this;
+            ajaxCall('/notifications/notifications/get', {}, {suppressErrors: true}, function (response) {
+                if (that.isMounted()) {
+                    that.updateData(response.data);
+                }
+            });
+            wsHelper.register(this);
+        },
+        componentWillUnmount: function() {
+            wsHelper.unregister();
+        },
+        getContent: function () {
+            var that = this;
+            var groups = this.state.data.groups;
+            var count = this.state.data.count;
+            var groupList = groups.map(function (group) {
+                return (
+                    React.createElement(NotificationGroup, {group: group, onMarkViewSuccess: that.updateData})
+                )
+            });
+
+            return (
+                React.createElement("div", null, 
+                    React.createElement("div", {className: "header"}, 
+                        React.createElement("div", {className: "all-notifications-header-link-wrapper"}, 
+                            React.createElement("a", {href: "/notifications/notifications/all", className: "all-notifications-header-link"}, 
+                            count.new > 0 ? 'Уведомления (' + count.new + ')' : 'Уведомления'
+                            )
+                        ), 
+                        React.createElement(NotificationGroupMarkViewAllButton, {onSuccess: that.updateData}), 
+                        React.createElement("div", {className: "clear"})
+                    ), 
+                    React.createElement("div", null, groupList), 
+                    React.createElement("div", {className: "notifications-footer"})
+                )
+            )
+        },
+        updateData: function (data) {
+            this.setState({
+                loaded: true,
+                data: data
+            });
+            this.props.onUpdateCounter('notifications_button_small', data.count.new);
+        },
+        getFooter: function () {
+            return this.state.data.count.all > 10 ? (
+                React.createElement("a", {className: "all-notifications-footer-link", href: "/notifications/notifications/all"}, "Все уведомления")
+            ) : (React.createElement("span", null));
+        },
+        getDefaultContent: function () {
+            return (React.createElement("div", {className: "no-notifications-message"}, "Уведомлений для вас еще нет"));
+        },
+        render: function () {
+            var classes = 'gc-account-user-submenu-bar gc-account-user-submenu-bar-' + this.props.item.id;
+            var groups = this.state.data.groups;
+            if (this.state.loaded) {
+                return (
+                    React.createElement("div", {className: classes}, 
+                groups.length > 0 ? this.getContent() : this.getDefaultContent(), 
+                this.getFooter()
+                    )
+                );
+            }
+            else {
+                return (
+                    React.createElement("div", {className: classes}, 
+                        React.createElement("div", {className: "loader"}, 
+                            React.createElement("i", {className: "fa fa-spinner fa-spin"})
+                        )
+                    )
+                );
+            }
+        }
+    });
+
+    var AccountUserSubmenu = React.createClass({displayName: "AccountUserSubmenu",
+        getInitialState: function () {
+            return {
+               balances: []
+            };
+        },
+
+        componentDidMount: function () {
+           var self = this;
+
+           if (typeof(this.props.item.id) != "undefined" && this.props.item.id == 'profile') {
+               ajaxCall("/pl/user/user/get-balance?id=" + window.accountUserId, {}, {}, function (data) {
+                   self.setState({balances: data.balances});
+               });
+           }
+        },
+
+        render: function () {
+            var that = this;
+            var subitems = this.props.item.subitems.map(function (subitem) {
+                var subItemFullId = that.props.item.id + '-' + subitem.id;
+                var notifyCount = that.props.counters.hasOwnProperty(subItemFullId) ? that.props.counters[subItemFullId] : 0;
+                return (
+                    React.createElement(AccountUserSubmenuItem, {
+                        item: subitem, 
+                        notifyCount: notifyCount, 
+                        parent: that.props.item, 
+                        onSelectParentItem: that.props.onSelectParentItem}
+                        )
+                )
+            });
+
+            if (typeof(this.state.balances) != "undefined") {
+                var balances = this.state.balances.map(function (balance) {
+                    return React.createElement("p", null, balance.label, ": ", React.createElement("b", null, balance.value));
+                });
+            }
+
+            var h3;
+            if (
+                this.props.item.id == 'profile'
+                && typeof(this.state.balances) != "undefined"
+            ) {
+                h3 = (
+                    React.createElement("div", null, 
+                        React.createElement("h3", null, this.props.item.label), 
+                        React.createElement("div", {className: "user-balance"}, balances)
+                    )
+                );
+            } else {
+                h3 = (React.createElement("h3", null, this.props.item.label));
+            }
+
+            return (
+                React.createElement("div", {className: "gc-account-user-submenu-bar"}, 
+                    h3, 
+                    React.createElement("ul", {className: "gc-account-user-submenu"}, 
+                    subitems
+                    )
+                )
+            )
+        }
+    });
+
+    var AccountUserSubmenuItem = React.createClass({displayName: "AccountUserSubmenuItem",
+        handleClick: function(e) {
+            //var params = getProp(this.props.item, 'params', {});
+            //if (getProp(params, 'is_popup', false)) {
+            //    ajaxCall(this.props.item.url, {
+            //    }, {}, function(response){
+            //        modal.setContent(response.html);
+            //        modal.show();
+            //    });
+            //    e.preventDefault();
+            //    this.props.onSelectParentItem(this.props.parent);
+            //}
+        },
+        render: function () {
+            var itemClassName = "menu-item-" + this.props.item.id;
+            var notifyCountClass = 'notify-count ' + (this.props.notifyCount > 0 ? '' : 'hide');
+            return (
+                React.createElement("li", {className: itemClassName}, 
+                    React.createElement("a", {href: this.props.item.url, onClick: this.handleClick, target: this.props.item.target ? this.props.item.target : "_self"}, 
+                    this.props.item.label, React.createElement("span", {className: notifyCountClass}, this.props.notifyCount)
+                    )
+                )
+            );
+        }
+    });
+
+    var AccountUserMenu = React.createClass({displayName: "AccountUserMenu",
+
+        fade: null,
+
+        getInitialState: function () {
+            return {
+                selectedItem: null,
+                expanded: false,
+                counters: {}
+            };
+        },
+
+        handleSelectItem: function (item) {
+            if (item == this.state.selectedItem) {
+                item = null;
+            }
+            if ( item && item.subitems && item.subitems.length == 1 ) {
+                location.href = item.subitems[0].url;
+                return;
+            }
+            this.setState({selectedItem: item})
+        },
+
+        handleToggle: function () {
+            var state = this.state;
+            state.expanded = !state.expanded;
+            this.setState(state);
+        },
+
+        componentDidMount: function () {
+            var self = this;
+            var $fade = $('<div class="gc-fade-wrapper"><div class="gc-fade"></div></div>');
+            $fade.appendTo($(document.body));
+            $fade.click(function () {
+                self.setState({selectedItem: null});
+            });
+            this.fade = $fade;
+
+            $('.gc-main-content').addClass("with-left-menu");
+            var that = this;
+            ajaxCall('/cms/counters/menu', {}, {suppressErrors: true}, function (response) {
+                that.setState({
+                    counters: response.counters
+                });
+                var $elem = $('.talks-widget.activated-talks-widget');
+                if ( $elem.length > 0 ) {
+                    $elem.talksWidget( 'setCounter', response.counters.conversationsData )
+                }
+            });
+            wsHelper.registerMenu(this);
+        },
+
+        getSubmenuComponent: function (selectedItem, onSelectParentItem) {
+            var that = this;
+            switch (selectedItem.id) {
+                case 'notifications_button_small':
+                    return (
+                        React.createElement(NotificationAccountUserSubmenu, {
+                            item: selectedItem, 
+                            onUpdateCounter: that.handleUpdateCounter}
+                        )
+                    );
+                default :
+                    return (
+                        React.createElement(AccountUserSubmenu, {
+                            item: selectedItem, 
+                            counters: that.state.counters, 
+                            onSelectParentItem: onSelectParentItem}
+                            )
+                    );
+            }
+        },
+
+        handleUpdateCounter: function (id, count) {
+            var counters = this.state.counters;
+            counters[id] = count;
+            this.setState({
+                counters: counters
+            });
+        },
+
+        render: function () {
+
+            var self = this;
+
+            var itemsArray = this.props.items ? this.props.items : [];
+
+            var items = itemsArray.map(function (item) {
+                var itemClassName = "";
+                var isActive = self.state.selectedItem && self.state.selectedItem == item;
+                if ( ! isActive && self.props.activeItem == item.id ) {
+                    isActive = true;
+                }
+
+                var id = item.id;
+                var count = self.state.counters.hasOwnProperty(id) ? self.state.counters[id] : 0;
+                return (
+                    React.createElement(AccountUserMenuItem, {
+                        key: id, 
+                        isActive: isActive, 
+                        item: item, 
+                        onSelectItem: self.handleSelectItem, 
+                        onUpdateCounter: self.handleUpdateCounter, 
+                        notifyCount: count})
+                )
+            });
+
+            var submenu = "";
+
+            if (this.state.selectedItem) {
+                submenu = this.getSubmenuComponent(this.state.selectedItem, self.handleSelectItem);
+
+                if (this.fade) {
+                    this.fade.show();
+                }
+            }
+            else {
+                if (this.fade) {
+                    this.fade.hide();
+                }
+            }
+
+            var leftbarClassName = "gc-account-leftbar";
+            if (this.state.expanded) {
+                leftbarClassName += " expanded";
+            }
+
+            return (
+                React.createElement("div", {className: leftbarClassName}, 
+                    React.createElement("a", {onClick: this.handleToggle, href: "javascript:void(0)", className: "toggle-link"}, 
+                        React.createElement("span", {className: "expand-icon glyphicon glyphicon-arrow-right"}), 
+                        React.createElement("span", {className: "collapse-icon glyphicon glyphicon-arrow-left"})
+                    ), 
+                    React.createElement("ul", {className: "gc-account-user-menu"}, 
+                    items
+                    ),
+               submenu
+                )
+            )
+        }
+    });
+
+    if (window.gcAccountUserMenu) {
+        React.render(
+            React.createElement(AccountUserMenu, {items: window.gcAccountUserMenu.items, activeItem: window.gcAccountUserMenu.activeItem}), document.getElementById('gcAccountUserMenu')
+        );
+    }
+})();
